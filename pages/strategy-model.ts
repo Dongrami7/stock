@@ -10,7 +10,8 @@ export function plan(input:any):Plan{
  return out;
 }
 export function assessment(p:Plan,price:number|null){
- if(price===null||!Number.isFinite(price)||price<=0)return {state:'시세 미확인',tone:'muted',targetReturn:null,pnl:null};
+ const target=p.sell1??p.trim,targetReturn=p.average&&target?target/p.average-1:null;
+ if(price===null||!Number.isFinite(price)||price<=0)return {state:'시세 미확인',tone:'muted',targetReturn,pnl:null};
  let state='관찰',tone='neutral';
  if(p.critical!=null&&price<p.critical){state='핵심 지지 하회 · 재검토';tone='danger';}
  else if(p.support!=null&&price<p.support){state='1차 지지 하회';tone='warn';}
@@ -19,6 +20,6 @@ export function assessment(p:Plan,price:number|null){
  else if(p.trim!=null&&price>=p.trim){state='덜어내기 기준 도달';tone='good';}
  else if(p.buyLow!=null&&p.buyHigh!=null&&price>=p.buyLow&&price<=p.buyHigh){state='매수 관찰 구간';tone='good';}
  else if(priceFields.every(k=>k==='average'||p[k]==null)){state='전략 가격 입력 필요';tone='muted';}
- const target=p.sell1??p.trim;return {state,tone,targetReturn:p.average&&target?target/p.average-1:null,pnl:p.average?(price/p.average-1):null};
+ return {state,tone,targetReturn,pnl:p.average?(price/p.average-1):null};
 }
 export function prompt(plans:Plan[],quotes:Record<string,any>){return ['다음은 사용자가 직접 입력한 투자 전략입니다. 수치는 거래 지시가 아닌 검토 기준입니다.','실제 시세 기준일, 사용자 가정, 미확인 항목을 구분하고 위험·반대 근거·시나리오·추가 확인 공시를 정리해주세요.','구간 도달을 자동 매수/매도 권고로 단정하지 말고 확정되지 않은 가격이나 전망을 만들어내지 마세요.','통화가 다른 종목은 환율 없이 합산하지 마세요.','',...plans.map(p=>JSON.stringify({plan:p,quote:quotes[p.market+':'+p.symbol]||null,status:assessment(p,quotes[p.market+':'+p.symbol]?.price??null)},null,2))].join('\n');}
