@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {amount,normalizeFinancials,normalizeKiwoom,ratio} from '../lib/butler-model';
+assert.equal(amount(''),null);assert.equal(amount('-'),null);assert.equal(amount('1,000'),1000);assert.equal(amount('-100'),-100);assert.equal(amount('unknown'),null);
+const quote=normalizeKiwoom({stk_nm:'테스트',cur_prc:'-70000',flu_rt:'-2.1',per:'-1',pbr:'1.2',eps:'-100'},'005930');
+assert.equal(quote.price,70000);assert.equal(quote.change,-2.1);assert.equal(quote.providerPer,null);assert.equal(quote.providerEps,-100);assert.equal(quote.quoteDate,null);
+const row=(account_id:string,sj_div:string,more:Record<string,any>)=>({account_id,sj_div,currency:'KRW',rcept_no:'20260814000001',...more});
+const data=[row('ifrs-full_Revenue','IS',{account_nm:'매출액',thstrm_amount:'40',thstrm_add_amount:'70',frmtrm_q_amount:'30',frmtrm_add_amount:'50'}),row('dart_OperatingIncomeLoss','IS',{thstrm_amount:'6',thstrm_add_amount:'10',frmtrm_add_amount:'-2'}),row('ifrs-full_CashFlowsFromUsedInOperatingActivities','CF',{thstrm_amount:'8',frmtrm_q_amount:'5'}),row('ifrs-full_Liabilities','BS',{thstrm_amount:'100',frmtrm_amount:'80'}),row('ifrs-full_Equity','BS',{thstrm_amount:'50',frmtrm_amount:'40'}),row('ifrs-full_ProfitLoss','IS',{thstrm_add_amount:'5',frmtrm_add_amount:'3'})];
+const half=normalizeFinancials(data,2026,'11012','CFS');
+assert.equal(half.metrics[0].value,70);assert.equal(half.metrics[0].previous,50);assert.ok(Math.abs(half.metrics[0].change!-.4)<1e-12);assert.equal(half.metrics[1].change,null);assert.equal(half.debtRatio,2);assert.equal(half.cashConversion,1.6);
+assert.equal(half.metrics.find(m=>m.key==='cashflow')?.previous,5);assert.equal(half.metrics.find(m=>m.key==='liabilities')?.previous,80);
+const missingYtd=normalizeFinancials([row('ifrs-full_Revenue','IS',{thstrm_amount:'40',frmtrm_q_amount:'30'})],2026,'11012','CFS');assert.equal(missingYtd.metrics[0].value,null);assert.equal(missingYtd.metrics[0].previous,null);
+const q1=normalizeFinancials([row('ifrs-full_Revenue','IS',{thstrm_amount:'40',frmtrm_q_amount:'30'})],2026,'11013','CFS');assert.equal(q1.metrics[0].value,40);
+assert.equal(normalizeFinancials([row('ifrs-full_Revenue','IS',{thstrm_amount:'100',currency:'USD'})],2025,'11011','CFS').metrics[0].value,null);
+assert.equal(normalizeFinancials([],2026,'11012','OFS').metrics[0].value,null);assert.equal(ratio(100,0),null);
+console.log('PASS: signed Kiwoom price / losses / DART YTD vs quarter / prior-period CF / currency / missing accounts');
