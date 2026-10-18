@@ -1,0 +1,33 @@
+import {plan,assessment,prompt,type Plan,priceFields} from './strategy-model';
+import companies from '../data/dart-companies.json';
+const $=(s:string)=>document.getElementById(s)!,form=$('plan-form') as HTMLFormElement,key='per-strategy-v1';
+let plans:Plan[]=[],events:any[]=[],quotes:Record<string,any>={},editing:string|null=null;
+const names=new Map(companies.companies.map(c=>[c.code,c.name]));
+const id=(p:Plan)=>p.market+':'+p.symbol;
+function say(s:string){$('toast').textContent=s;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',3500)}
+try{const saved=JSON.parse(localStorage.getItem(key)||'null');if(saved){plans=(saved.plans||[]).slice(0,100).map(plan);events=Array.isArray(saved.events)?saved.events.slice(0,100):[];}}catch{say('저장된 전략 형식을 확인하세요. 새 백업으로 복원할 수 있습니다.')}
+function save(){localStorage.setItem(key,JSON.stringify({version:1,plans,events}));}
+function fmt(n:number|null,dec=2){return n===null?'—':n.toLocaleString('ko-KR',{maximumFractionDigits:dec})}
+function add(parent:Node,...children:(Node|string)[]){for(const child of children)parent.appendChild(typeof child==='string'?document.createTextNode(child):child)}
+function cell(text:string,className=''){const td=document.createElement('td');td.textContent=text;td.className=className;return td;}
+function render(){const body=$('plans');body.replaceChildren();$('count').textContent=String(plans.length);
+ for(const p of plans){const quote=quotes[id(p)],a=assessment(p,quote?.price??null),tr=document.createElement('tr'),name=cell(p.name),hint=document.createElement('small');hint.textContent=p.symbol+' · '+p.role;add(name,hint);add(tr,name,cell(p.currency),cell(fmt(p.quantity,6)),cell(fmt(p.average)),cell(fmt(quote?.price??null)));
+  for(const k of ['buyLow','buyHigh','trim','sell1','sell2','support','critical'] as const)add(tr,cell(fmt(p[k])));
+  add(tr,cell(a.targetReturn===null?'—':fmt(a.targetReturn*100)+'%'),cell(a.state,a.tone));
+  const controls=cell('');for(const [label,action]of [['수정',()=>edit(p)],['AI 검토문',()=>showPrompt([p])],['삭제',()=>{if(confirm(p.name+'의 개인 전략을 삭제할까요? 백업 파일이 있으면 복원할 수 있습니다.')){plans=plans.filter(x=>id(x)!==id(p));save();render();}}]] as const){const b=document.createElement('button');b.textContent=label;b.onclick=action;add(controls,b,' ');}add(tr,controls);add(body,tr);
+ }
+ if(!plans.length){const tr=document.createElement('tr'),td=cell('아직 등록한 전략이 없습니다. 위에서 종목과 나의 가격 기준을 입력하세요.');td.colSpan=15;add(tr,td);add(body,tr);}
+ const log=$('events');log.replaceChildren();for(const e of events.slice(0,30)){const row=document.createElement('div');row.className='event';row.textContent=`${e.at} · ${e.name} · ${e.state} · 수집 가격 ${fmt(e.price)} · 시세 기준 ${e.quoteDate||'미확인'}`;add(log,row);}if(!events.length)log.textContent='전략과 수집 가격을 비교한 기록이 여기에 쌓입니다.';
+}
+function edit(p:Plan){editing=id(p);for(const [k,v]of Object.entries(p)){const el=form.elements.namedItem(k) as HTMLInputElement|null;if(el)el.value=v===null?'':String(v);}($('form-title')).textContent=p.name+' 전략 수정';$('cancel').hidden=false;form.scrollIntoView({behavior:'smooth',block:'start'});}
+function reset(){editing=null;form.reset();$('form-title').textContent='전략 추가';$('cancel').hidden=true;}
+function check(){let changed=false;for(const p of plans){const quote=quotes[id(p)];if(!quote)continue;const result=assessment(p,quote.price),latest=events.find(e=>e.id===id(p));if(latest?.state===result.state&&latest?.quoteDate===quote.date)continue;events.unshift({id:id(p),at:new Date().toLocaleString('ko-KR'),name:p.name,state:result.state,price:quote.price,quoteDate:quote.date});changed=true;}events=events.slice(0,100);if(changed)save();}
+async function refresh(){try{const r=await fetch('./data/daily.json',{cache:'no-store'});if(!r.ok)throw Error('수집 자료 조회 실패');const d:any=await r.json(),raw=d.items.find((i:any)=>i.file==='quotes_min.json')?.data;if(!raw)throw Error('국내 시세 자료 없음');const cols=raw.columns,code=cols.indexOf('c'),price=cols.indexOf('clpr');quotes={};for(const row of raw.rows){if(typeof row[price]==='number'&&row[price]>0)quotes['KR:'+row[code]]={price:row[price],date:raw.as_of_iso,currency:'KRW',source:'공개 API 확정 종가'};}
+ for(const q of d.twelveQuotes||[])if(q?.symbol&&Number.isFinite(q.price)&&q.price>0&&q.currency==='USD')quotes['US:'+q.symbol]={price:q.price,date:q.datetime,currency:q.currency,source:'Twelve Data'};
+ $('source').textContent=`국내 API ${raw.n.toLocaleString()}종목 · 시세 기준일 ${raw.as_of_iso} · 수집 ${new Date(d.generatedAt).toLocaleString('ko-KR')} · Twelve Data: ${(d.twelveQuotes||[]).length?'수집값 있음':'이 프로젝트의 키 연결 미확인 · 미국 시세 미제공'}`;check();render();}catch(e:any){$('source').textContent=e.message+' · 기존 전략은 유지됩니다.';}}
+async function showPrompt(selected:Plan[]){if(!selected.length){say('전략을 먼저 추가하세요.');return;}$('prompt-box').hidden=false;const text=prompt(selected,quotes);($('prompt-text') as HTMLTextAreaElement).value=text;try{await navigator.clipboard.writeText(text);say('AI 검토문 복사 완료 · API 호출 없음');}catch{say('아래 검토문을 직접 선택해 복사하세요.');}$('prompt-box').scrollIntoView({behavior:'smooth'});}
+form.onsubmit=e=>{e.preventDefault();try{const values=Object.fromEntries(new FormData(form) as any) as any;if(!values.name)values.name=values.market==='KR'?names.get(values.symbol)||values.symbol:values.symbol;const p=plan(values),exists=plans.some(x=>id(x)===id(p)&&id(x)!==editing);if(exists)throw Error('이미 등록한 종목입니다. 수정 버튼을 사용하세요.');if(!editing&&plans.length>=100)throw Error('전략은 100개까지 저장할 수 있습니다.');plans=plans.filter(x=>id(x)!==editing);plans.push(p);save();check();render();reset();say('개인 전략 저장 완료');}catch(e:any){say(e.message)}};
+$('cancel').onclick=reset;$('refresh').onclick=refresh;$('prompt').onclick=()=>showPrompt(plans);
+$('export').onclick=()=>{const u=URL.createObjectURL(new Blob([JSON.stringify({version:1,plans,events},null,2)],{type:'application/json'})),a=document.createElement('a');a.href=u;a.download='내_투자전략_'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)};
+$('import').onclick=()=>($('file') as HTMLInputElement).click();$('file').onchange=async e=>{try{const file=(e.target as HTMLInputElement).files?.[0];if(!file)return;if(file.size>500000)throw Error('백업 파일은 500KB 이하로 준비하세요.');const d=JSON.parse(await file.text());if(d.version!==1||!Array.isArray(d.plans)||d.plans.length>100)throw Error('전략 백업 형식 오류');const incoming=d.plans.map(plan),merged=new Map(plans.map(p=>[id(p),p]));for(const p of incoming)merged.set(id(p),p);if(merged.size>100)throw Error('복원 후 전략이 100개를 초과합니다.');plans=[...merged.values()];save();check();render();say('개인 전략 복원 완료');}catch(e:any){say(e.message)}};
+render();refresh();
