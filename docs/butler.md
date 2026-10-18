@@ -36,3 +36,6 @@ OAuth token is memory-only; expiry is parsed in Asia/Seoul.
 ## Verification
 Run TypeScript type checks, tests/butler.test.ts, adapter tests and the production build.
 Source tests and live-provider checks are distinct. Record provider failures without replacing them with demo data.
+
+## Daily import
+The owner-private `/api/daily` POST is a shared public-market cache writer authenticated by the Sites dispatch service boundary. Keep the Site private. It accepts only allowlisted Aik public files and validated DART issuer/period responses, never arbitrary URLs, user records, credentials or Kiwoom tokens. GET returns persisted import time and file digests. `scripts/refresh-data.py` collects four public market files and the latest expected interim/previous-year CFS annual statements and 90-day disclosures for Samsung Electronics and SK Hynix. It obtains the DART key from an owner-provided ZIP only in memory, receives Site access through hidden stdin, posts actual responses, and verifies persisted readback. Partial failures preserve prior snapshots and are reported per source. Daily-import cache lasts 24 hours; its actual quote date stays distinct from collection time. Expected analyst forecasts still require an upload. A saved schedule is not evidence of a successful run.

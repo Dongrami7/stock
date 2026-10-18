@@ -13,9 +13,9 @@ DART 재무·공시와 키움 REST 시세를 함께 조회하는 주식 분석 �
 기존 비공개 Sites 프로젝트의 소스 내보내기입니다.
 기준 커밋: `5d56f7a9fc6f528c722fcf70aacc8b319b53a277`.
 원본 XLSX, 최초 659종목 스냅샷, 개인 메모, API 키, 실제 데이터 기반 테스트 자료는 포함하지 않습니다.
-공개판은 최초 스냅샷을 자동 생성하지 않으며 사용자가 자신의 XLSX를 업로드합니다.
+GitHub Pages는 `data/daily.json`의 실제 공개 API 시세를 읽어 종목을 자동 표시합니다. 개인 전망 자료는 XLSX로 추가할 수 있습니다.
 기존 비공개 사이트의 저장 데이터와 공개 범위는 바꾸지 않았습니다.
-GitHub 커밋에서 Sites로 자동 배포하는 연결은 아직 설정하지 않았습니다.
+GitHub Pages는 `main` 루트에서 정적 화면과 일일 수집 파일을 배포합니다. 기존 비공개 Sites 배포는 별도입니다.
 
 ## 개발
 Node.js 22.13 이상과 package.json에 지정된 pnpm을 사용합니다.
@@ -46,3 +46,9 @@ Sites가 인증과 비공개 접근을 관리합니다. 다른 호스팅에서�
 실제 브라우저 검증은 수행하지 못했습니다.
 재무 기간과 출처, 누적/분기 구분, 캐시 정책은 [docs/butler.md](docs/butler.md)를 참고하세요.
 출처: 금융감독원 OpenDART, 키움증권 REST API, https://aikstockdata.com . 원천별 데이터 이용 조건을 따릅니다.
+
+## GitHub Pages · 일일 데이터와 보고서
+
+https://dongrami7.github.io/stock/ 에 접속하면 최신 `data/daily.json`을 읽습니다. API 시세 2,779종목과 삼성전자·SK하이닉스 DART 재무/공시를 최초 검증했습니다. 키움 실시간 시세는 IP 등록 문제로 미연결이며 공개 확정 종가를 구분해 표시합니다. 예상 PER·성장률을 계산할 실적 전망치는 생성하지 않습니다.
+
+[일간 보고서](https://dongrami7.github.io/stock/report.html)는 자동 초안 편집, 브라우저 저장, Markdown 내려받기, 인쇄/PDF를 지원합니다. [운영 절차](docs/daily-update.md)를 따릅니다. 개인 수정본은 공개하지 않습니다.

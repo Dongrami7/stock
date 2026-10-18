@@ -1,6 +1,8 @@
 import {env} from 'cloudflare:workers';
 import {unzipSync,strFromU8} from 'fflate';
 import {normalizeFinancials,normalizeKiwoom,type Raw} from './butler-model';
+import {sourceFile} from './provider';
+import {normalizeQuotes} from './aik';
 import corporateSnapshot from '../data/dart-companies.json';
 type Runtime={DART_API_KEY?:string;KIWOOM_APP_KEY?:string;KIWOOM_SECRET_KEY?:string;DB?:D1Database;BUCKET?:R2Bucket};
 const runtime=()=>env as unknown as Runtime;
@@ -22,7 +24,8 @@ async function cached(key:string,ttl:number,fetcher:()=>Promise<any>){
   try{const row=await e.DB?.prepare('SELECT meta FROM provider_cache WHERE key=?').bind('butler:'+key).first<{meta:string}>();if(row)previous=JSON.parse(row.meta);}catch{}
   const load=async()=>{try{return previous?.rawKey?(await e.BUCKET?.get(previous.rawKey))?.json():null}catch{return null}};
   // Also damp repeated failures, including unsuccessful first requests.
-  if(previous&&now-Date.parse(previous.checkedAt)<Math.min(ttl,previous.error?60000:ttl)){
+  const validFor=previous?.refreshMode==='daily'?86400000:ttl;
+  if(previous&&now-Date.parse(previous.checkedAt)<Math.min(validFor,previous.error?60000:validFor)){
    const data=await load();return {data,meta:{...previous,cached:true}};
   }
   try{
@@ -70,11 +73,16 @@ async function accessToken(){
   token={value:data.token,expires:expiry};return token.value;
  })();try{return await tokenPending}finally{tokenPending=null}
 }
-export async function quote(code:string){return cached('kiwoom:quote:'+code,30000,async()=>{
+export async function quote(code:string){const primary=await cached('kiwoom:quote:'+code,30000,async()=>{
  const access=await accessToken();const data=await fetchJson('https://api.kiwoom.com/api/dostk/stkinfo',{method:'POST',headers:{'Content-Type':'application/json;charset=UTF-8',authorization:'Bearer '+access,'api-id':'ka10001'},body:JSON.stringify({stk_cd:code})},'키움');
  if(Number(data.return_code||0)!==0){token=null;throw new ProviderError('KIWOOM_QUOTE','키움 시세 조회 실패 · 사용 권한과 종목코드 확인');}
  const result=normalizeKiwoom(data,code);if(!result.name||result.price===null)throw new ProviderError('QUOTE_EMPTY','키움 시세 값이 없습니다.');return result;
-});}
+});if(primary.data)return primary;
+ const publicData=await sourceFile('quotes_min.json');
+ const value=publicData.data?normalizeQuotes(publicData.data)[code]:null;
+ if(!value?.close)return primary;
+ return {data:{code,name:corporateSnapshot.companies.find(c=>c.code===code)?.name||code,price:value.close,change:value.change===null?null:value.change*100,providerPer:null,providerPbr:null,providerEps:null,quoteDate:value.date},meta:{...publicData.meta,source:'aik',fallback:true,primaryError:primary.meta.error,stale:!!publicData.meta.error,error:null}};
+}
 export async function financials(code:string,year:number,report:string,fs:string){
  const corp=await resolveCorp(code);const response=await cached(`dart:financial:${corp.corpCode}:${year}:${report}:${fs}`,30*60000,async()=>dart('fnlttSinglAcntAll.json',{corp_code:corp.corpCode,bsns_year:String(year),reprt_code:report,fs_div:fs}));
  return {company:corp,meta:response.meta,data:response.data?.list?.length?normalizeFinancials(response.data.list,year,report,fs):null,noData:response.data?.status==='013'};
